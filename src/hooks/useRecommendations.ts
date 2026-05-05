@@ -24,32 +24,60 @@ export interface Recommendation {
   servings: number;
 }
 
-// Curated food images to pair with recommendations (high-quality placeholders)
-const FOOD_IMAGES = [
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuABo9-on4uBoRWouDr3hEstMICMx8Ftdh49km6ELGAP_Lw_zp3-fapcSD6xFXP2iyi0QSfi9ve46RwRX3I3kLmIdTOXxwG3yFRzP6enPaHIHUVzKXFrc1Tf9nExItP1OcTXtDxBdX6vf_QTkpxFGtZYgarbRGarZiK9GzUl2-rftSGyg7L9X6Ik2SQYLHXWuaZ-tGx85UYrf8GSUCIyqcGPxXM-wMI7oem1bFpaRlwZzsEzsIsij0M1lepX9sns82o-az644wDWCTKE',
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuCg5i58qw-ORXUDfyZFGVzVEE4pgeVWDmmmdwzsChPGZ8VAyGMzb5XU_8Kr_-hMFtLsGh_IPI2LJbpyxnadGbbtsU4HyPjZ8e4Gpdm4RXFUDXVQOaMZjhwOVH8iWL7IuYe1R6hSD9N54Bqt-SSQJbF67Qhbe95BHHdI6oZA2bmYLbC4bb6IUupvhpkIViRTDjdGP6fLmLqFsrB-0NkAj6ETW_ggN8HCrExxPgzWPsTgfQmL7OSQyNlF8nV14AREwvw9o0ZmInm9LNHX',
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuDH2t76lb18Gjo3W2M3uDIrk11p4Db9mhnwr_tQ3T5tpACbqaXKTtiJZ_cvG9_v-2sQag38q2TwDJ3avhX_7yshUFqObD1tL8rnLcuais0i_xbKbT-hAXluTcsFGwssajdi99b0DsocgjN4qx_MtkDvpcXg3BULXOUi9T6sbSLXugQCSam3mASGSpsMPdrTu9ObVZ3oLbPLVBqvYFgvupw8ptqs2eKlxJBVU66mKkvTyemTWrzp9CfWH8OarBSV7lxQGWgs2DPyXcer',
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuAhq6k0dTYkv878mK3H_vvKI29flaBoT3i6bi45Dnq-qKxIfsEtmcoTM29XxHqWfrboKod4lA9eHex6CQiW-YvsD0l-oyIAlZO4wDxMOu7HFR-0lUlWQkfsmTWYkoJpnSrqgD_hYyiTSIk7MuAT4Phfp-byj9Qq2V9d0zKT5IovKSKGJIbihVb3NtAKeDNg-yv_9XsTMgp9Yt1TXbD8DUsnaeC4tzJ6GBKqY0sfChAYpOmKxGyWNQJslzJ9_ATsVpXy6oix-EFm1fUF',
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuDIVfjm-IrzcDJ-rjncyHQNbKZBvDnfbqvzkAZWEJyUjRAM-E73vohtCH6a_r97_m63VddRVc3YFEDPqKxjDtKW6JFuRFT_MlI8D2DArTdSLZIMcMIaC2JPugAeJ6JPUaoThYMnpLVM7A-8GhY1w2MLhz3xCoah1-uPdjSf947SJLdb7LRyx42LDLfKJ5XC9zSbS1_vqzwDjVfe7yW3OP4SeywK1d1t_FoLo8jZBSmdTDTt8p-Ase8PmY-KzqACbAogVYD0iC2U-qa7',
-];
+const isValidUrl = (value: unknown): value is string => {
+  if (typeof value !== 'string' || !value.trim()) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:';
+  } catch {
+    return false;
+  }
+};
+
+const buildFoodImagePromptUrl = (name: string, cuisineType: string, description: string) => {
+  const prompt = `${name}, ${cuisineType} cuisine food photography, ${description}, plated meal, realistic, appetizing`;
+  return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&seed=${encodeURIComponent(name.toLowerCase())}&nologo=true`;
+};
 
 export const useRecommendations = () => {
   const { user } = useAuth();
 
   return useQuery({
-    queryKey: ['recommendations', user?.id],
+    queryKey: ['recommendations-v2', user?.id],
     queryFn: async (): Promise<Recommendation[]> => {
       if (!user) throw new Error('Not authenticated');
 
       // Fetch user's taste profile
-      const { data: tasteProfile, error } = await supabase
+      const { data: existingTasteProfile, error } = await supabase
         .from('taste_profiles')
         .select('*')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
 
-      if (error || !tasteProfile) {
-        throw new Error('Could not load your taste profile');
+      if (error) {
+        throw new Error(`Could not load your taste profile: ${error.message}`);
+      }
+
+      // Auto-heal users who don't yet have a taste_profiles row.
+      let tasteProfile = existingTasteProfile;
+      if (!tasteProfile) {
+        const { data: createdTasteProfile, error: createError } = await supabase
+          .from('taste_profiles')
+          .insert({
+            user_id: user.id,
+            dietary_regimen: 'None',
+            allergies: [],
+            flavor_affinities: { spicy: 0, umami: 0, sweet: 0, sour: 0, bitter: 0 },
+            favorite_cuisines: [],
+          })
+          .select('*')
+          .single();
+
+        if (createError || !createdTasteProfile) {
+          throw new Error(`Could not initialize your taste profile: ${createError?.message || 'Unknown error'}`);
+        }
+
+        tasteProfile = createdTasteProfile;
       }
 
       // Fetch recent meal history for context
@@ -61,7 +89,14 @@ export const useRecommendations = () => {
         .limit(5);
 
       const tp = tasteProfile as TasteProfile;
-      const affinities = tp.flavor_affinities as FlavorAffinities;
+      const affinitiesRaw = (tp.flavor_affinities || {}) as Partial<FlavorAffinities>;
+      const affinities: FlavorAffinities = {
+        spicy: Number(affinitiesRaw.spicy ?? 0),
+        umami: Number(affinitiesRaw.umami ?? 0),
+        sweet: Number(affinitiesRaw.sweet ?? 0),
+        sour: Number(affinitiesRaw.sour ?? 0),
+        bitter: Number(affinitiesRaw.bitter ?? 0),
+      };
 
       // Build meal history summary
       const mealHistorySummary = recentMeals && recentMeals.length > 0
@@ -94,6 +129,7 @@ Return ONLY a raw JSON array (no markdown, no code blocks) with exactly 5 object
   "carbs": number (grams),
   "fat": number (grams),
   "match_percentage": number (80-99, how well it fits their profile),
+  "image_url": "string (optional direct URL to an image that visually matches this specific dish)",
   "cuisine_type": "string (e.g. Modern Japanese, Rustic Italian)",
   "reason": "string (1 short sentence explaining WHY this was recommended)",
   "ingredients": ["string", "string", ...] (list of 6-12 ingredients with quantities, e.g. '2 cups basmati rice'),
@@ -117,23 +153,32 @@ Sort by match_percentage descending. Make the descriptions evocative and appetiz
         throw new Error('Failed to parse AI recommendations. Please try again.');
       }
 
-      // Map parsed results and attach images
-      return parsed.map((item: any, index: number) => ({
-        name: item.name || 'Recommended Dish',
-        description: item.description || 'A delicious meal curated for your palate.',
-        calories: item.calories || 0,
-        protein: item.protein || 0,
-        carbs: item.carbs || 0,
-        fat: item.fat || 0,
-        match_percentage: item.match_percentage || 85,
-        image_url: FOOD_IMAGES[index % FOOD_IMAGES.length],
-        cuisine_type: item.cuisine_type || 'Fusion',
-        reason: item.reason || 'Curated for your unique flavor profile.',
-        ingredients: item.ingredients || [],
-        instructions: item.instructions || [],
-        prep_time: item.prep_time || '30 mins',
-        servings: item.servings || 2,
-      }));
+      // Map parsed results and attach dish-specific images.
+      return parsed.map((item: any) => {
+        const name = item.name || 'Recommended Dish';
+        const description = item.description || 'A delicious meal curated for your palate.';
+        const cuisineType = item.cuisine_type || 'Fusion';
+        const imageUrl = isValidUrl(item.image_url)
+          ? item.image_url
+          : buildFoodImagePromptUrl(name, cuisineType, description);
+
+        return {
+          name,
+          description,
+          calories: item.calories || 0,
+          protein: item.protein || 0,
+          carbs: item.carbs || 0,
+          fat: item.fat || 0,
+          match_percentage: item.match_percentage || 85,
+          image_url: imageUrl,
+          cuisine_type: cuisineType,
+          reason: item.reason || 'Curated for your unique flavor profile.',
+          ingredients: item.ingredients || [],
+          instructions: item.instructions || [],
+          prep_time: item.prep_time || '30 mins',
+          servings: item.servings || 2,
+        };
+      });
     },
     enabled: !!user,
     staleTime: 1000 * 60 * 10, // Cache for 10 minutes to avoid excessive API calls

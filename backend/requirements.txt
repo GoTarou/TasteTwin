@@ -1,0 +1,13 @@
+torch
+torchvision
+torchaudio
+pandas
+numpy
+matplotlib
+scikit-learn
+tqdm
+requests
+flask
+fastapi
+uvicorn
+seaborn

@@ -1,0 +1,44 @@
+{
+  "apple_pie": {
+    "calories": 237,
+    "protein": 2.4,
+    "carbs": 34.0,
+    "fat": 11.0
+  },
+  "pizza": {
+    "calories": 266,
+    "protein": 11.0,
+    "carbs": 33.0,
+    "fat": 10.0
+  },
+  "hamburger": {
+    "calories": 295,
+    "protein": 17.0,
+    "carbs": 24.0,
+    "fat": 14.0
+  },
+  "sushi": {
+    "calories": 143,
+    "protein": 4.5,
+    "carbs": 32.0,
+    "fat": 0.5
+  },
+  "french_fries": {
+    "calories": 312,
+    "protein": 3.4,
+    "carbs": 41.0,
+    "fat": 15.0
+  },
+  "ice_cream": {
+    "calories": 207,
+    "protein": 3.5,
+    "carbs": 24.0,
+    "fat": 11.0
+  },
+  "default": {
+    "calories": 250,
+    "protein": 10.0,
+    "carbs": 30.0,
+    "fat": 10.0
+  }
+}

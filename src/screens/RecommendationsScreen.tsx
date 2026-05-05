@@ -169,7 +169,7 @@ export const RecommendationsScreen = () => {
           <View className="bg-surface-container rounded-xl p-6 items-center mb-8 border border-outline-variant/10">
             <MaterialIcons name="error-outline" size={32} color="#ff8c00" />
             <Text className="text-on-surface-variant text-sm mt-3 text-center mb-4">
-              Could not generate recommendations. Make sure you've set up your taste profile.
+              {(error as Error)?.message || 'Could not generate recommendations. Please try again.'}
             </Text>
             <TouchableOpacity 
               className="bg-primary px-6 py-3 rounded-xl"
